@@ -460,10 +460,10 @@ document.addEventListener('DOMContentLoaded', () => {
     
             let cardHTML;
     
-            // Use "long name" layout if name > 10 chars OR special device dimensions
-            if (displayName.length > 10 || isSpecialDevice) {
+            // Use "long name" layout if name = 16 chars OR special device dimensions
+            if (displayName.length === 16 || isSpecialDevice) {
                 cardHTML = `
-                    <div class="pokemon-card bg-${resolvedType} relative flex pokemonColor flex-col justify-between w-62 rounded-[24px] px-4 pt-6 3.5xs:pt-4 pb-4 overflow-hidden hover:cursor-pointer transform border-2 border-transparent hover:border-black/20 dark:hover:border-white/60 dark:hover:border-opacity-60 transition-all duration-300 ease-in-out shadow-[inset_0_0_10px_rgba(255,255,255,0.4)] hover:shadow-[inset_0_0_10px_rgba(255,255,255,0.4), inset_0_0_0_2px_rgba(128,128,128,1)] group"
+                    <div class="pokemon-card bg-${resolvedType} relative flex pokemonColor flex-col justify-between w-62 rounded-[24px] px-4 pt-6 3.5xs:pt-4 pb-2 overflow-hidden hover:cursor-pointer transform border-2 border-transparent hover:border-black/20 dark:hover:border-white/60 dark:hover:border-opacity-60 transition-all duration-300 ease-in-out shadow-[inset_0_0_10px_rgba(255,255,255,0.4)] hover:shadow-[inset_0_0_10px_rgba(255,255,255,0.4), inset_0_0_0_2px_rgba(128,128,128,1)] group"
                         data-id="${pokemon.id}"
                         data-name="${pokemon.name}"
                         data-types='${JSON.stringify(pokemon.types)}'
@@ -477,11 +477,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="relative w-full">
                             <!-- ID absolutely positioned top-right -->
                             <p id="pokemonNumber" role="text" aria-label="Pokémon Number"
-                                class="opacity-15 font-extrabold text-sm 2sx:text-base absolute top-0 right-0">
+                                class="opacity-15 font-extrabold text-sm 2sx:text-base absolute -top-2 -right-1">
                                 ${formattedId}
                             </p>
                             <h2 id="pokemonName"
-                                class="text-white font-bold ${nameClass} mt-6 mb-1">
+                                class="text-white font-bold ${nameClass} mt-2 mb-1">
                                 ${displayName}
                             </h2>
                         </div>
