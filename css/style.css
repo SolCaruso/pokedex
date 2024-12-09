@@ -1,0 +1,210 @@
+/**************************************************** 
+                    Global Styles
+ *****************************************************/
+
+ html,
+ body {
+   margin: 0;
+   padding: 0;
+   border: 0;
+   line-height: 1.5em;
+   overflow-x: hidden;
+ }
+
+ html {
+   font-size: 100%;
+   -webkit-font-smoothing: antialiased;
+   -webkit-text-size-adjust: 100%;
+   -moz-text-size-adjust: 100%;
+   -ms-text-size-adjust: 100%;
+   text-size-adjust: 100%;
+   text-rendering: optimizeLegibility;
+   -moz-osx-font-smoothing: grayscale;
+   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+   overflow-y: scroll;
+ }
+ 
+ body {
+   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+   overflow: hidden;
+ }
+ 
+ .windows body {
+   font-family: 'Inter', sans-serif;
+ }
+ 
+ input {
+    border: none;
+    outline: none;
+    box-shadow: none;
+ }
+
+ .svg-container {
+    transition: all 0.3s ease;
+}
+
+.svg-container.hover {
+    transform: scale(1.1); 
+    opacity: 0.8; 
+}
+
+@media (max-width: 344px) and (max-height: 882px), 
+       (max-height: 344px) and (max-width: 882px) {
+    #pokeballIcon {
+        display: none !important;
+    }
+    #backFold {
+        display: none !important;
+    }
+}
+
+/* ––––––––––––––––––––––––– TOOLTIP –––––––––––––––––––––––––––––––– */
+
+.tooltip {
+    position: absolute;
+    color: #fff;
+    top: 35px;
+    padding: 5px 10px;
+    border-radius: 5px;
+    z-index: 1000;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    pointer-events: none; 
+}
+
+.tooltip.slideIn {
+    animation: slideIn 0.2s ease forwards; /* Reduce duration to 0.2s */
+    opacity: 1;
+}
+
+.tooltip.hide {
+    animation: slideOut 0.15s ease forwards; /* Reduce duration to 0.15s */
+    opacity: 0;
+}
+
+@keyframes slideIn {
+    0% {
+        transform: translateX(-10px); /* Start from 10px to the left */
+        opacity: 0;
+    }
+    100% {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes slideOut {
+    0% {
+        transform: translateX(0);
+        opacity: 1;
+    }
+    100% {
+        transform: translateX(-10px);
+        opacity: 0;
+    }
+}
+
+/* ––––––––––––––––––––––––– SEARCH BAR –––––––––––––––––––––––––––– */
+
+/* Search Bar Animation */
+.search-container {
+    transition: all 0.3s ease;
+}
+
+.search-container.hover {
+    transform: scale(1.03); /* Similar scaling effect */
+    opacity: 0.8; /* Slight transparency to match */
+}
+
+/* Input Styles */
+input:focus {
+    outline: none; /* Remove default focus outline */
+}
+
+/* Light mode autofill styles */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+    /* Match your light mode background */
+    color: rgba(0, 0, 0, 0.5) !important;
+    -webkit-text-fill-color: rgba(0, 0, 0, 0.5) !important;
+    border: none !important;
+}
+
+/* Dark mode autofill styles */
+.dark input:-webkit-autofill,
+.dark input:-webkit-autofill:hover,
+.dark input:-webkit-autofill:focus {
+    color: rgba(255, 255, 255, 0.5) !important;
+    -webkit-text-fill-color: rgba(255, 255, 255, 0.5) !important;
+    border: none !important;
+}
+
+.hidden-override {
+  display: none !important;
+}
+
+
+/* –––––––––––––––––––––– SHIMMER EFFECTS ––––––––––––––––––––––––––– */
+
+
+/* Search Bar Animation */
+
+@keyframes shimmerSearch {
+    0% {
+      background-position: -200% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
+  }
+
+  .shimmer-text {
+    background-size: 200% auto;
+    animation: shimmerSearch 6s linear infinite;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+  
+
+
+/* ––––––––––––––––––––––   MODAL   ––––––––––––––––––––––––––– */
+
+/* Prevent body scrolling when modal is open */
+    body.modal-open {
+      overflow: hidden;
+    }
+
+    /* Ensure smooth transitions for the modal and content */
+    #content-wrapper {
+      transition: transform 0.3s ease-in-out;
+    }
+
+    #side-modal {
+      transition: transform 0.3s ease-in-out;
+    }
+
+/* Heart Button */
+
+  .heart-svg {
+      transition: fill 0.3s ease-in-out;
+  }
+
+  .shadow-inner-left {
+    box-shadow: inset 20px 0 50px -40px rgba(0, 0, 0, 0.3); 
+  }
+
+  .fill-bar {
+    transition: width 0.5s ease-in-out;
+}
+
+#baseBtn {
+  position: relative;
+  z-index: 1000;
+}
+
+.my-custom-lineheight {
+  line-height: 1.2; 
+}
+
