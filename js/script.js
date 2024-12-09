@@ -461,7 +461,7 @@ document.addEventListener('DOMContentLoaded', () => {
             let cardHTML;
     
             // Use "long name" layout if name = 16 chars OR special device dimensions
-            if (displayName.length === 16 || isSpecialDevice) {
+            if ((displayName.length >= 16 && displayName.length <= 18) || isSpecialDevice) {
                 cardHTML = `
                     <div class="pokemon-card bg-${resolvedType} relative flex pokemonColor flex-col justify-between w-62 rounded-[24px] px-4 pt-6 3.5xs:pt-4 pb-2 overflow-hidden hover:cursor-pointer transform border-2 border-transparent hover:border-black/20 dark:hover:border-white/60 dark:hover:border-opacity-60 transition-all duration-300 ease-in-out shadow-[inset_0_0_10px_rgba(255,255,255,0.4)] hover:shadow-[inset_0_0_10px_rgba(255,255,255,0.4), inset_0_0_0_2px_rgba(128,128,128,1)] group"
                         data-id="${pokemon.id}"
