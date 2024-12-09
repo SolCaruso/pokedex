@@ -208,3 +208,23 @@ input:-webkit-autofill:focus {
   line-height: 1.2; 
 }
 
+#side-modal {
+  overflow-y: clip;
+  position: fixed;
+  bottom: 0;
+  width: 100%;
+  height: calc(var(--vh, 1vh) * 100);
+  overflow: hidden; 
+  touch-action: none; /* Prevents scrolling with touch gestures on mobile */
+}
+
+body.modal-open {
+  overflow: hidden;
+  height: 100%; /* sometimes needed to ensure no scrollbars appear */
+  margin: 0;
+}
+
+#side-modal::-webkit-scrollbar {
+  width: 0px;
+  background: transparent; /* hide scrollbar track */
+}

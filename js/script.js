@@ -814,6 +814,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
         populateModal(); 
         toggleModal();
+        document.body.classList.add('modal-open');
     }
 
     // Toggle modal visibility
@@ -821,8 +822,10 @@ document.addEventListener('DOMContentLoaded', () => {
         isModalOpen = !isModalOpen;
         modal.classList.toggle('translate-x-full', !isModalOpen);
         modalBackdrop.classList.toggle('hidden', !isModalOpen);
+    
         if (!isModalOpen) {
             currentCardData = null; // clear data for next Pokémon
+            document.body.classList.remove('modal-open'); // remove the class here
         }
     }
 
@@ -1412,6 +1415,14 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     });
+    
+    function setVh() {
+        let vh = window.innerHeight * 0.01;
+        document.documentElement.style.setProperty('--vh', `${vh}px`);
+      }
+      
+      window.addEventListener('resize', setVh);
+      setVh();
     
 
 
