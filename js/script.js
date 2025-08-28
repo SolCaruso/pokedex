@@ -275,6 +275,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 try {
                     data = JSON.parse(responseText);
                 } catch (parseError) {
+                    // If response is just "OK" or other non-JSON, it's likely a rate limit or API issue
+                    if (responseText.trim() === "OK" || responseText.length < 10) {
+                        console.error(`API returned "${responseText}" instead of JSON for ${url} - likely rate limited`);
+                        throw new Error(`API rate limited or unavailable for ${url}`);
+                    }
                     console.error(`JSON parse error for ${url}:`, parseError);
                     console.error(`Response text:`, responseText);
                     throw new Error(`Invalid JSON response: ${parseError.message}`);
@@ -363,9 +368,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
     
-            // Process Pokémon in batches of 100 - fetch ALL data (basic + moves + extended) together
+            // Process Pokémon in batches of 50 - fetch ALL data (basic + moves + extended) together
             const pokemonDetails = [];
-            const batchSize = 100; // Process 100 at a time
+            const batchSize = 50; // Process 50 at a time to reduce API load
             allPokemon = []; // Initialize so we can show progress
             
             for (let i = 0; i < allData.results.length; i += batchSize) {
@@ -378,8 +383,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 const batchResults = await Promise.all(
                     batch.map(async (pokemon, batchIndex) => {
                         try {
-                            // Add small delay between requests in batch
-                            if (batchIndex > 0 && batchIndex % 20 === 0) {
+                            // Add longer delays between requests in batch to avoid rate limiting
+                            if (batchIndex > 0 && batchIndex % 10 === 0) {
+                                await new Promise(resolve => setTimeout(resolve, 200));
+                            } else if (batchIndex > 0) {
                                 await new Promise(resolve => setTimeout(resolve, 50));
                             }
                             
@@ -490,14 +497,43 @@ document.addEventListener('DOMContentLoaded', () => {
                             return pokeData;
                         } catch (error) {
                             console.error(`❌ Failed to fetch ${pokemon.name}:`, error.message);
-                            return null; // Skip failed Pokémon
+                            
+                            // Return a basic fallback object for failed Pokémon so they don't break evolution chains
+                            return {
+                                id: parseInt(pokemon.url.split('/').filter(Boolean).pop()),
+                                name: pokemon.name,
+                                types: ['normal'], // Default type
+                                height: 0,
+                                weight: 0,
+                                abilities: [],
+                                sprites: '',
+                                cardImage: '',
+                                modalImage: '',
+                                baseStats: { hp: 0, attack: 0, defense: 0, spAtk: 0, spDef: 0, speed: 0 },
+                                speciesUrl: '',
+                                genderRatio: { male: '—', female: '—' },
+                                eggGroups: [],
+                                eggCycle: 0,
+                                species: 'Unknown Pokémon',
+                                evolutionDetails: [],
+                                moves: [],
+                                _failed: true // Mark as failed for filtering
+                            };
                         }
                     })
                 );
                 
-                // Filter out failed requests and add to main array
-                const validResults = batchResults.filter(result => result !== null);
+                // Separate successful and failed Pokémon
+                const allResults = batchResults.filter(result => result !== null);
+                const validResults = allResults.filter(result => !result._failed);
+                const failedResults = allResults.filter(result => result._failed);
+                
+                // Add valid Pokémon to the main array (for display)
                 pokemonDetails.push(...validResults);
+                
+                // Store failed Pokémon separately for evolution chain lookups
+                if (!window.failedPokemon) window.failedPokemon = [];
+                window.failedPokemon.push(...failedResults);
                 
                 // Update allPokemon and show current batch on screen immediately
                 allPokemon = [...pokemonDetails];
@@ -512,9 +548,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 console.log(`✅ Batch ${batchNumber}/${totalBatches} complete (${validResults.length}/${batch.length} successful) - ALL data loaded`);
                 
-                // Small delay between batches to be respectful to the API
+                // Longer delay between batches to be respectful to the API
                 if (i + batchSize < allData.results.length) {
-                    await new Promise(resolve => setTimeout(resolve, 200));
+                    await new Promise(resolve => setTimeout(resolve, 500));
                 }
             }
 
@@ -1503,7 +1539,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         // Make the name clickable and styled
                         function formatName(name) {
                             const capName = capitalize(name);
-                            return `<span class="font-bold text-${firstType} dark:text-${firstType}2 no-underline hover:underline cursor-pointer pokemon-link" data-pokemon="${capName}">${capName}</span>`;
+                            // Check if this Pokemon exists in our loaded data
+                            const exists = allPokemon.some(p => p.name.toLowerCase() === name.toLowerCase());
+                            if (exists) {
+                                return `<span class="font-bold text-${firstType} dark:text-${firstType}2 no-underline hover:underline cursor-pointer pokemon-link" data-pokemon="${capName}">${capName}</span>`;
+                            } else {
+                                // Non-clickable for missing Pokemon
+                                return `<span class="font-bold text-gray-500 dark:text-gray-400">${capName}</span>`;
+                            }
                         }
                     
                         let evoInfoHTML = '';
