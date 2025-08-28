@@ -249,18 +249,36 @@ document.addEventListener('DOMContentLoaded', () => {
     async function fetchWithRetry(url, retries = 3, delay = 100) {
         for (let i = 0; i < retries; i++) {
             try {
-                const response = await fetch(url);
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    }
+                });
                 
                 if (!response.ok) {
                     if (response.status === 429) {
-                        // Rate limited, wait longer
+                        console.log(`Rate limited, waiting ${delay * (i + 1) * 2}ms before retry...`);
                         await new Promise(resolve => setTimeout(resolve, delay * (i + 1) * 2));
                         continue;
                     }
                     throw new Error(`HTTP error! status: ${response.status} for ${url}`);
                 }
                 
-                const data = await response.json();
+                // Get response text first to debug
+                const responseText = await response.text();
+                
+                // Try to parse as JSON
+                let data;
+                try {
+                    data = JSON.parse(responseText);
+                } catch (parseError) {
+                    console.error(`JSON parse error for ${url}:`, parseError);
+                    console.error(`Response text:`, responseText);
+                    throw new Error(`Invalid JSON response: ${parseError.message}`);
+                }
+                
                 return data;
             } catch (error) {
                 if (i === retries - 1) {
@@ -280,13 +298,30 @@ document.addEventListener('DOMContentLoaded', () => {
             const cloudinaryBase = 'https://res.cloudinary.com/dgbsgb0af/image/fetch';
             
             // Fetch minimal data for the first 717 Pokémon
-            const allData = await fetchWithRetry('https://pokeapi.co/api/v2/pokemon?limit=717');
+            // Start with a smaller limit to test if the API is working
+            let allData;
+            try {
+                allData = await fetchWithRetry('https://pokeapi.co/api/v2/pokemon?limit=717');
+                console.log(`✅ Loaded ${allData.results.length} Pokémon`);
+            } catch (error) {
+                console.error('⚠️ Failed to fetch 717 Pokémon, trying fallback...');
+                try {
+                    // Fallback to first 151 Pokémon if the full request fails
+                    allData = await fetchWithRetry('https://pokeapi.co/api/v2/pokemon?limit=151');
+                    console.log(`✅ Loaded ${allData.results.length} Pokémon (fallback)`);
+                } catch (fallbackError) {
+                    console.error('⚠️ Failed to fetch 151 Pokémon, trying minimal set...');
+                    // Final fallback to just 20 Pokémon
+                    allData = await fetchWithRetry('https://pokeapi.co/api/v2/pokemon?limit=20');
+                    console.log(`✅ Loaded ${allData.results.length} Pokémon (minimal set)`);
+                }
+            }
     
             const pokemonDetails = await Promise.all(
                 allData.results.map(async (pokemon, index) => {
-                    // Add a small delay between requests to avoid rate limiting
-                    if (index > 0 && index % 10 === 0) {
-                        await new Promise(resolve => setTimeout(resolve, 50));
+                    // Add a longer delay between requests to avoid rate limiting
+                    if (index > 0 && index % 5 === 0) {
+                        await new Promise(resolve => setTimeout(resolve, 200));
                     }
                     
                     const details = await fetchWithRetry(pokemon.url);
@@ -323,23 +358,24 @@ document.addEventListener('DOMContentLoaded', () => {
     
             // Fetch extended details (except moves) for each Pokémon
             await Promise.all(allPokemon.map(async (poke, index) => {
-                // Add a small delay between requests to avoid rate limiting
-                if (index > 0 && index % 5 === 0) {
-                    await new Promise(resolve => setTimeout(resolve, 100));
-                }
-                
-                // Species data
-                const speciesData = await fetchWithRetry(poke.speciesUrl);
-    
-                const genderRate = speciesData.gender_rate;
-                const malePercentage = genderRate === -1 ? '—' : 12.5 * (8 - genderRate);
-                const femalePercentage = genderRate === -1 ? '—' : 12.5 * genderRate;
-    
-                const eggGroups = speciesData.egg_groups.map(group => group.name);
-                const speciesName = speciesData.genera.find(genus => genus.language.name === 'en').genus;
-    
-                // Evolution chain
-                const evoData = await fetchWithRetry(speciesData.evolution_chain.url);
+                try {
+                    // Add a longer delay between requests to avoid rate limiting
+                    if (index > 0 && index % 3 === 0) {
+                        await new Promise(resolve => setTimeout(resolve, 300));
+                    }
+                    
+                    // Species data
+                    const speciesData = await fetchWithRetry(poke.speciesUrl);
+        
+                    const genderRate = speciesData.gender_rate;
+                    const malePercentage = genderRate === -1 ? '—' : 12.5 * (8 - genderRate);
+                    const femalePercentage = genderRate === -1 ? '—' : 12.5 * genderRate;
+        
+                    const eggGroups = speciesData.egg_groups.map(group => group.name);
+                    const speciesName = speciesData.genera.find(genus => genus.language.name === 'en').genus;
+        
+                    // Evolution chain
+                    const evoData = await fetchWithRetry(speciesData.evolution_chain.url);
                 const evolutionDetails = [];
                 {
                     let current = evoData.chain;
@@ -372,7 +408,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     img.onload = () => resolve();
                     img.onerror = () => resolve(); // Resolve on error to avoid blocking
                 })));
-            }));
+            } catch (error) {
+                console.error(`Error fetching extended data for Pokémon ${poke.name}:`, error);
+                // Continue with other Pokémon even if one fails
+            }
+        }));
 
     
             hideLoading();
@@ -380,6 +420,27 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             console.error("Error fetching Pokémon data:", error);
             hideLoading();
+            
+            // Show user-friendly error message
+            const $pokemonList = document.getElementById('pokemonList');
+            if ($pokemonList) {
+                $pokemonList.innerHTML = `
+                    <div class="text-center p-8">
+                        <h3 class="text-xl font-bold text-gray-700 dark:text-white mb-4">Unable to Load Pokémon</h3>
+                        <p class="text-gray-600 dark:text-gray-300 mb-4">
+                            We're having trouble connecting to the Pokémon database. This might be due to:
+                        </p>
+                        <ul class="text-gray-600 dark:text-gray-300 text-left max-w-md mx-auto mb-6">
+                            <li>• Network connectivity issues</li>
+                            <li>• Pokémon API service being temporarily unavailable</li>
+                            <li>• Rate limiting from too many requests</li>
+                        </ul>
+                        <button onclick="location.reload()" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">
+                            Try Again
+                        </button>
+                    </div>
+                `;
+            }
         }
     }
    
