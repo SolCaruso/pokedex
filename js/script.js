@@ -244,6 +244,33 @@ document.addEventListener('DOMContentLoaded', () => {
     ******************************************************/
 
     const $pokemonList = document.getElementById("pokemonList");
+    
+    // Helper function to fetch with retry and rate limiting
+    async function fetchWithRetry(url, retries = 3, delay = 100) {
+        for (let i = 0; i < retries; i++) {
+            try {
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    if (response.status === 429) {
+                        // Rate limited, wait longer
+                        await new Promise(resolve => setTimeout(resolve, delay * (i + 1) * 2));
+                        continue;
+                    }
+                    throw new Error(`HTTP error! status: ${response.status} for ${url}`);
+                }
+                
+                const data = await response.json();
+                return data;
+            } catch (error) {
+                if (i === retries - 1) {
+                    throw error;
+                }
+                // Wait before retrying
+                await new Promise(resolve => setTimeout(resolve, delay * (i + 1)));
+            }
+        }
+    }
                   
     // Fetch all Pokémon data once (minimal info only, but for all Pokémon)
     async function fetchAllPokemon() {
@@ -253,13 +280,16 @@ document.addEventListener('DOMContentLoaded', () => {
             const cloudinaryBase = 'https://res.cloudinary.com/dgbsgb0af/image/fetch';
             
             // Fetch minimal data for the first 717 Pokémon
-            const allResponse = await fetch('https://pokeapi.co/api/v2/pokemon?limit=717');
-            const allData = await allResponse.json();
+            const allData = await fetchWithRetry('https://pokeapi.co/api/v2/pokemon?limit=717');
     
             const pokemonDetails = await Promise.all(
-                allData.results.map(async (pokemon) => {
-                    const detailsResponse = await fetch(pokemon.url);
-                    const details = await detailsResponse.json();
+                allData.results.map(async (pokemon, index) => {
+                    // Add a small delay between requests to avoid rate limiting
+                    if (index > 0 && index % 10 === 0) {
+                        await new Promise(resolve => setTimeout(resolve, 50));
+                    }
+                    
+                    const details = await fetchWithRetry(pokemon.url);
     
                     const speciesUrl = details.species.url;
                     const spriteUrl = details.sprites.other['official-artwork'].front_default;
@@ -292,10 +322,14 @@ document.addEventListener('DOMContentLoaded', () => {
             allPokemon = pokemonDetails;
     
             // Fetch extended details (except moves) for each Pokémon
-            await Promise.all(allPokemon.map(async (poke) => {
+            await Promise.all(allPokemon.map(async (poke, index) => {
+                // Add a small delay between requests to avoid rate limiting
+                if (index > 0 && index % 5 === 0) {
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+                
                 // Species data
-                const speciesResponse = await fetch(poke.speciesUrl);
-                const speciesData = await speciesResponse.json();
+                const speciesData = await fetchWithRetry(poke.speciesUrl);
     
                 const genderRate = speciesData.gender_rate;
                 const malePercentage = genderRate === -1 ? '—' : 12.5 * (8 - genderRate);
@@ -305,8 +339,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const speciesName = speciesData.genera.find(genus => genus.language.name === 'en').genus;
     
                 // Evolution chain
-                const evoResponse = await fetch(speciesData.evolution_chain.url);
-                const evoData = await evoResponse.json();
+                const evoData = await fetchWithRetry(speciesData.evolution_chain.url);
                 const evolutionDetails = [];
                 {
                     let current = evoData.chain;
@@ -766,8 +799,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     
         // Only fetch the moves now, since everything else is already pre-fetched
-        const detailsResponse = await fetch(`https://pokeapi.co/api/v2/pokemon/${pokeData.id}`);
-        const details = await detailsResponse.json();
+        const details = await fetchWithRetry(`https://pokeapi.co/api/v2/pokemon/${pokeData.id}`);
     
         // Moves (limit first 8)
         const moveCache = new Map();
@@ -778,8 +810,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (moveCache.has(moveUrl)) {
                     return moveCache.get(moveUrl);
                 } else {
-                    const moveResponse = await fetch(moveUrl);
-                    const moveData = await moveResponse.json();
+                    const moveData = await fetchWithRetry(moveUrl);
                     const moveInfo = {
                         name: m.move.name,
                         accuracy: moveData.accuracy !== null ? moveData.accuracy : "—",
