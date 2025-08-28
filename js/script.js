@@ -363,7 +363,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
     
-            // Process Pokémon in batches of 100 and show them as they load
+            // Process Pokémon in batches of 100 - fetch ALL data (basic + moves + extended) together
             const pokemonDetails = [];
             const batchSize = 100; // Process 100 at a time
             allPokemon = []; // Initialize so we can show progress
@@ -373,7 +373,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const batchNumber = Math.floor(i / batchSize) + 1;
                 const totalBatches = Math.ceil(allData.results.length / batchSize);
                 
-                console.log(`🔄 Loading batch ${batchNumber}/${totalBatches} (Pokémon ${i + 1}-${Math.min(i + batchSize, allData.results.length)})`);
+                console.log(`🔄 Loading batch ${batchNumber}/${totalBatches} (Pokémon ${i + 1}-${Math.min(i + batchSize, allData.results.length)}) - Complete data`);
                 
                 const batchResults = await Promise.all(
                     batch.map(async (pokemon, batchIndex) => {
@@ -383,6 +383,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 await new Promise(resolve => setTimeout(resolve, 50));
                             }
                             
+                            // Fetch basic Pokémon data
                             const details = await fetchWithRetry(pokemon.url);
             
                             const speciesUrl = details.species.url;
@@ -390,7 +391,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             const cardImage = `${cloudinaryBase}/w_150,c_scale/${spriteUrl}`;
                             const modalImage = `${cloudinaryBase}/w_600,c_scale/${spriteUrl}`;
             
-                            return {
+                            // Create basic Pokémon object
+                            const pokeData = {
                                 id: details.id,
                                 name: details.name,
                                 types: details.types.map(t => t.type.name),
@@ -410,6 +412,82 @@ document.addEventListener('DOMContentLoaded', () => {
                                 },
                                 speciesUrl: speciesUrl
                             };
+
+                            // Fetch species data
+                            const speciesData = await fetchWithRetry(pokeData.speciesUrl);
+                
+                            const genderRate = speciesData.gender_rate;
+                            const malePercentage = genderRate === -1 ? '—' : 12.5 * (8 - genderRate);
+                            const femalePercentage = genderRate === -1 ? '—' : 12.5 * genderRate;
+                
+                            const eggGroups = speciesData.egg_groups.map(group => group.name);
+                            const speciesName = speciesData.genera.find(genus => genus.language.name === 'en').genus;
+                
+                            // Fetch evolution chain
+                            const evoData = await fetchWithRetry(speciesData.evolution_chain.url);
+                            const evolutionDetails = [];
+                            {
+                                let current = evoData.chain;
+                                while (current) {
+                                    const evoName = current.species.name;
+                                    const evoUrl = current.species.url;
+                                    const evoId = evoUrl.split("/").filter(Boolean).pop();
+                                    const evoSpriteUrl = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${evoId}.png`;
+                                    const evoThumbnail = `${cloudinaryBase}/w_80,c_scale/${evoSpriteUrl}`;
+                                    evolutionDetails.push({
+                                        name: evoName,
+                                        sprite: evoThumbnail,
+                                    });
+                                    current = current.evolves_to[0];
+                                }
+                            }
+
+                            // Fetch moves data (we already have details from above)
+                            let moves = [];
+                            try {
+                                const limitedMoves = details.moves.slice(0, 8);
+                                
+                                moves = await Promise.all(
+                                    limitedMoves.map(async (m) => {
+                                        try {
+                                            const moveData = await fetchWithRetry(m.move.url);
+                                            return {
+                                                name: m.move.name,
+                                                accuracy: moveData.accuracy !== null ? moveData.accuracy : "—",
+                                                damageClass: (moveData.damage_class && moveData.damage_class.name) || "—"
+                                            };
+                                        } catch (error) {
+                                            console.error(`Failed to fetch move ${m.move.name}:`, error);
+                                            return {
+                                                name: m.move.name,
+                                                accuracy: "—",
+                                                damageClass: "—"
+                                            };
+                                        }
+                                    })
+                                );
+                            } catch (error) {
+                                console.error(`Failed to fetch moves for ${pokeData.name}:`, error);
+                            }
+
+                            // Add all extended details to the Pokémon object
+                            pokeData.genderRatio = { male: malePercentage, female: femalePercentage };
+                            pokeData.eggGroups = eggGroups;
+                            pokeData.eggCycle = speciesData.hatch_counter;
+                            pokeData.species = speciesName;
+                            pokeData.evolutionDetails = evolutionDetails;
+                            pokeData.moves = moves;
+
+                            // Preload modal images and evolution images
+                            const preloadImages = [pokeData.modalImage, ...evolutionDetails.map(e => e.sprite)];
+                            await Promise.all(preloadImages.map(imgUrl => new Promise((resolve) => {
+                                const img = new Image();
+                                img.src = imgUrl;
+                                img.onload = () => resolve();
+                                img.onerror = () => resolve(); // Resolve on error to avoid blocking
+                            })));
+
+                            return pokeData;
                         } catch (error) {
                             console.error(`❌ Failed to fetch ${pokemon.name}:`, error.message);
                             return null; // Skip failed Pokémon
@@ -432,118 +510,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     loadNextPage(); // Show first 20 Pokémon
                 }
                 
-                console.log(`✅ Batch ${batchNumber}/${totalBatches} complete (${validResults.length}/${batch.length} successful)`);
+                console.log(`✅ Batch ${batchNumber}/${totalBatches} complete (${validResults.length}/${batch.length} successful) - ALL data loaded`);
                 
                 // Small delay between batches to be respectful to the API
                 if (i + batchSize < allData.results.length) {
                     await new Promise(resolve => setTimeout(resolve, 200));
                 }
             }
-    
-            // Now fetch extended details for all Pokémon in background
-            console.log(`🔄 Loading extended data for ${pokemonDetails.length} Pokémon in background...`);
-            
-            // Process extended data in batches of 50 (including moves)
-            const extendedBatchSize = 50;
-            for (let i = 0; i < pokemonDetails.length; i += extendedBatchSize) {
-                const batch = pokemonDetails.slice(i, i + extendedBatchSize);
-                
-                await Promise.all(batch.map(async (poke) => {
-                    try {
-                        // Species data
-                        const speciesData = await fetchWithRetry(poke.speciesUrl);
-            
-                        const genderRate = speciesData.gender_rate;
-                        const malePercentage = genderRate === -1 ? '—' : 12.5 * (8 - genderRate);
-                        const femalePercentage = genderRate === -1 ? '—' : 12.5 * genderRate;
-            
-                        const eggGroups = speciesData.egg_groups.map(group => group.name);
-                        const speciesName = speciesData.genera.find(genus => genus.language.name === 'en').genus;
-            
-                        // Evolution chain
-                        const evoData = await fetchWithRetry(speciesData.evolution_chain.url);
-                        const evolutionDetails = [];
-                        {
-                            let current = evoData.chain;
-                            while (current) {
-                                const evoName = current.species.name;
-                                const evoUrl = current.species.url;
-                                const evoId = evoUrl.split("/").filter(Boolean).pop();
-                                const evoSpriteUrl = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${evoId}.png`;
-                                const evoThumbnail = `${cloudinaryBase}/w_80,c_scale/${evoSpriteUrl}`;
-                                evolutionDetails.push({
-                                    name: evoName,
-                                    sprite: evoThumbnail,
-                                });
-                                current = current.evolves_to[0];
-                            }
-                        }
-            
-                        // Fetch moves data (limit first 8) and cache it
-                        let moves = [];
-                        try {
-                            const pokemonDetails = await fetchWithRetry(`https://pokeapi.co/api/v2/pokemon/${poke.id}`);
-                            const limitedMoves = pokemonDetails.moves.slice(0, 8);
-                            
-                            moves = await Promise.all(
-                                limitedMoves.map(async (m) => {
-                                    try {
-                                        const moveData = await fetchWithRetry(m.move.url);
-                                        return {
-                                            name: m.move.name,
-                                            accuracy: moveData.accuracy !== null ? moveData.accuracy : "—",
-                                            damageClass: (moveData.damage_class && moveData.damage_class.name) || "—"
-                                        };
-                                    } catch (error) {
-                                        console.error(`Failed to fetch move ${m.move.name}:`, error);
-                                        return {
-                                            name: m.move.name,
-                                            accuracy: "—",
-                                            damageClass: "—"
-                                        };
-                                    }
-                                })
-                            );
-                        } catch (error) {
-                            console.error(`Failed to fetch moves for ${poke.name}:`, error);
-                        }
-
-                        // Add these extended details to the Pokémon object (including moves)
-                        poke.genderRatio = { male: malePercentage, female: femalePercentage };
-                        poke.eggGroups = eggGroups;
-                        poke.eggCycle = speciesData.hatch_counter;
-                        poke.species = speciesName;
-                        poke.evolutionDetails = evolutionDetails;
-                        poke.moves = moves; // Cache moves data
-            
-                        // Preload modal images and evolution images
-                        const preloadImages = [poke.modalImage, ...evolutionDetails.map(e => e.sprite)];
-                        await Promise.all(preloadImages.map(imgUrl => new Promise((resolve) => {
-                            const img = new Image();
-                            img.src = imgUrl;
-                            img.onload = () => resolve();
-                            img.onerror = () => resolve(); // Resolve on error to avoid blocking
-                        })));
-                    } catch (error) {
-                        console.error(`❌ Error fetching extended data for Pokémon ${poke.name}:`, error.message);
-                        // Continue with other Pokémon even if one fails
-                    }
-                }));
-                
-                // Show progress for every batch
-                const progress = Math.min(i + extendedBatchSize, pokemonDetails.length);
-                console.log(`📊 Extended data: ${progress}/${pokemonDetails.length} Pokémon complete`);
-                
-                // Small delay between extended data batches
-                if (i + extendedBatchSize < pokemonDetails.length) {
-                    await new Promise(resolve => setTimeout(resolve, 100));
-                }
-            }
 
             // Save completed data to cache
             allPokemon = pokemonDetails;
             saveToCache(allPokemon);
-            console.log(`🎉 All ${allPokemon.length} Pokémon loaded and cached!`);
+            console.log(`🎉 All ${allPokemon.length} Pokémon loaded and cached with complete data!`);
         } catch (error) {
             console.error("Error fetching Pokémon data:", error);
             hideLoading();
