@@ -246,7 +246,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const $pokemonList = document.getElementById("pokemonList");
     
     // Helper function to fetch with retry and rate limiting
-    async function fetchWithRetry(url, retries = 3, delay = 100) {
+    async function fetchWithRetry(url, retries = 3, delay = 200) {
         for (let i = 0; i < retries; i++) {
             try {
                 const response = await fetch(url, {
@@ -259,8 +259,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 if (!response.ok) {
                     if (response.status === 429) {
-                        console.log(`Rate limited, waiting ${delay * (i + 1) * 2}ms before retry...`);
-                        await new Promise(resolve => setTimeout(resolve, delay * (i + 1) * 2));
+                        const waitTime = delay * (i + 1) * 4; // Increased wait time
+                        console.log(`Rate limited, waiting ${waitTime}ms before retry...`);
+                        await new Promise(resolve => setTimeout(resolve, waitTime));
                         continue;
                     }
                     throw new Error(`HTTP error! status: ${response.status} for ${url}`);
@@ -317,51 +318,76 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
     
-            const pokemonDetails = await Promise.all(
-                allData.results.map(async (pokemon, index) => {
-                    // Add a longer delay between requests to avoid rate limiting
-                    if (index > 0 && index % 5 === 0) {
-                        await new Promise(resolve => setTimeout(resolve, 200));
-                    }
-                    
-                    const details = await fetchWithRetry(pokemon.url);
-    
-                    const speciesUrl = details.species.url;
-                    const spriteUrl = details.sprites.other['official-artwork'].front_default;
-                    const cardImage = `${cloudinaryBase}/w_150,c_scale/${spriteUrl}`;
-                    const modalImage = `${cloudinaryBase}/w_600,c_scale/${spriteUrl}`;
-    
-                    return {
-                        id: details.id,
-                        name: details.name,
-                        types: details.types.map(t => t.type.name),
-                        height: details.height,
-                        weight: details.weight,
-                        abilities: details.abilities.map(a => a.ability.name),
-                        sprites: spriteUrl,
-                        cardImage,
-                        modalImage,
-                        baseStats: {
-                            hp: details.stats[0].base_stat,
-                            attack: details.stats[1].base_stat,
-                            defense: details.stats[2].base_stat,
-                            spAtk: details.stats[3].base_stat,
-                            spDef: details.stats[4].base_stat,
-                            speed: details.stats[5].base_stat,
-                        },
-                        speciesUrl: speciesUrl
-                    };
-                })
-            );
+            // Process Pokémon sequentially in batches to avoid rate limiting
+            const pokemonDetails = [];
+            const batchSize = 10; // Process 10 at a time
+            
+            for (let i = 0; i < allData.results.length; i += batchSize) {
+                const batch = allData.results.slice(i, i + batchSize);
+                console.log(`🔄 Processing Pokémon ${i + 1}-${Math.min(i + batchSize, allData.results.length)} of ${allData.results.length}`);
+                
+                const batchResults = await Promise.all(
+                    batch.map(async (pokemon, batchIndex) => {
+                        try {
+                            // Add delay between each request in the batch
+                            if (batchIndex > 0) {
+                                await new Promise(resolve => setTimeout(resolve, 100));
+                            }
+                            
+                            const details = await fetchWithRetry(pokemon.url);
+            
+                            const speciesUrl = details.species.url;
+                            const spriteUrl = details.sprites.other['official-artwork'].front_default;
+                            const cardImage = `${cloudinaryBase}/w_150,c_scale/${spriteUrl}`;
+                            const modalImage = `${cloudinaryBase}/w_600,c_scale/${spriteUrl}`;
+            
+                            return {
+                                id: details.id,
+                                name: details.name,
+                                types: details.types.map(t => t.type.name),
+                                height: details.height,
+                                weight: details.weight,
+                                abilities: details.abilities.map(a => a.ability.name),
+                                sprites: spriteUrl,
+                                cardImage,
+                                modalImage,
+                                baseStats: {
+                                    hp: details.stats[0].base_stat,
+                                    attack: details.stats[1].base_stat,
+                                    defense: details.stats[2].base_stat,
+                                    spAtk: details.stats[3].base_stat,
+                                    spDef: details.stats[4].base_stat,
+                                    speed: details.stats[5].base_stat,
+                                },
+                                speciesUrl: speciesUrl
+                            };
+                        } catch (error) {
+                            console.error(`❌ Failed to fetch ${pokemon.name}:`, error.message);
+                            return null; // Skip failed Pokémon
+                        }
+                    })
+                );
+                
+                // Filter out failed requests and add to main array
+                pokemonDetails.push(...batchResults.filter(result => result !== null));
+                
+                // Add delay between batches
+                if (i + batchSize < allData.results.length) {
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
+            }
     
             allPokemon = pokemonDetails;
     
-            // Fetch extended details (except moves) for each Pokémon
-            await Promise.all(allPokemon.map(async (poke, index) => {
+            // Fetch extended details (except moves) for each Pokémon - sequentially to avoid rate limiting
+            console.log(`🔄 Loading extended data for ${allPokemon.length} Pokémon...`);
+            
+            for (let i = 0; i < allPokemon.length; i++) {
+                const poke = allPokemon[i];
                 try {
-                    // Add a longer delay between requests to avoid rate limiting
-                    if (index > 0 && index % 3 === 0) {
-                        await new Promise(resolve => setTimeout(resolve, 300));
+                    // Add delay between requests
+                    if (i > 0) {
+                        await new Promise(resolve => setTimeout(resolve, 150));
                     }
                     
                     // Species data
@@ -376,43 +402,48 @@ document.addEventListener('DOMContentLoaded', () => {
         
                     // Evolution chain
                     const evoData = await fetchWithRetry(speciesData.evolution_chain.url);
-                const evolutionDetails = [];
-                {
-                    let current = evoData.chain;
-                    while (current) {
-                        const evoName = current.species.name;
-                        const evoUrl = current.species.url;
-                        const evoId = evoUrl.split("/").filter(Boolean).pop();
-                        const evoSpriteUrl = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${evoId}.png`;
-                        const evoThumbnail = `${cloudinaryBase}/w_80,c_scale/${evoSpriteUrl}`;
-                        evolutionDetails.push({
-                            name: evoName,
-                            sprite: evoThumbnail,
-                        });
-                        current = current.evolves_to[0];
+                    const evolutionDetails = [];
+                    {
+                        let current = evoData.chain;
+                        while (current) {
+                            const evoName = current.species.name;
+                            const evoUrl = current.species.url;
+                            const evoId = evoUrl.split("/").filter(Boolean).pop();
+                            const evoSpriteUrl = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${evoId}.png`;
+                            const evoThumbnail = `${cloudinaryBase}/w_80,c_scale/${evoSpriteUrl}`;
+                            evolutionDetails.push({
+                                name: evoName,
+                                sprite: evoThumbnail,
+                            });
+                            current = current.evolves_to[0];
+                        }
                     }
+        
+                    // Add these extended details to the Pokémon object (excluding moves)
+                    poke.genderRatio = { male: malePercentage, female: femalePercentage };
+                    poke.eggGroups = eggGroups;
+                    poke.eggCycle = speciesData.hatch_counter;
+                    poke.species = speciesName;
+                    poke.evolutionDetails = evolutionDetails;
+        
+                    // Preload modal images and evolution images
+                    const preloadImages = [poke.modalImage, ...evolutionDetails.map(e => e.sprite)];
+                    await Promise.all(preloadImages.map(imgUrl => new Promise((resolve) => {
+                        const img = new Image();
+                        img.src = imgUrl;
+                        img.onload = () => resolve();
+                        img.onerror = () => resolve(); // Resolve on error to avoid blocking
+                    })));
+                    
+                    // Show progress for every 50 Pokémon
+                    if ((i + 1) % 50 === 0 || i === allPokemon.length - 1) {
+                        console.log(`📊 Processed ${i + 1}/${allPokemon.length} Pokémon extended data`);
+                    }
+                } catch (error) {
+                    console.error(`❌ Error fetching extended data for Pokémon ${poke.name}:`, error.message);
+                    // Continue with other Pokémon even if one fails
                 }
-    
-                // Add these extended details to the Pokémon object (excluding moves)
-                poke.genderRatio = { male: malePercentage, female: femalePercentage };
-                poke.eggGroups = eggGroups;
-                poke.eggCycle = speciesData.hatch_counter;
-                poke.species = speciesName;
-                poke.evolutionDetails = evolutionDetails;
-    
-                // Preload modal images and evolution images
-                const preloadImages = [poke.modalImage, ...evolutionDetails.map(e => e.sprite)];
-                await Promise.all(preloadImages.map(imgUrl => new Promise((resolve) => {
-                    const img = new Image();
-                    img.src = imgUrl;
-                    img.onload = () => resolve();
-                    img.onerror = () => resolve(); // Resolve on error to avoid blocking
-                })));
-            } catch (error) {
-                console.error(`Error fetching extended data for Pokémon ${poke.name}:`, error);
-                // Continue with other Pokémon even if one fails
             }
-        }));
 
     
             hideLoading();
@@ -425,18 +456,54 @@ document.addEventListener('DOMContentLoaded', () => {
             const $pokemonList = document.getElementById('pokemonList');
             if ($pokemonList) {
                 $pokemonList.innerHTML = `
-                    <div class="text-center p-8">
-                        <h3 class="text-xl font-bold text-gray-700 dark:text-white mb-4">Unable to Load Pokémon</h3>
-                        <p class="text-gray-600 dark:text-gray-300 mb-4">
+                    <div class="flex flex-col items-center justify-center min-h-96 px-4 py-8 mx-auto max-w-2xl">
+                        <!-- Pokéball Icon -->
+                        <div class="mb-6">
+                            <svg width="64" height="64" viewBox="0 0 108 111" fill="none" xmlns="http://www.w3.org/2000/svg" class="opacity-30">
+                                <path d="M54.0143 71.014C62.5766 71.014 69.5178 63.9383 69.5178 55.2099C69.5178 46.4815 62.5766 39.4058 54.0143 39.4058C45.4519 39.4058 38.5108 46.4815 38.5108 55.2099C38.5108 63.9383 45.4519 71.014 54.0143 71.014Z" fill="currentColor"/>
+                                <path d="M85.6032 61.5866C84.8967 61.5866 84.2776 62.0783 84.1105 62.779C80.7835 76.5776 68.5729 86.8066 54.0113 86.8066C39.4497 86.8066 27.2353 76.5738 23.9083 62.779C23.7412 62.0783 23.1221 61.5866 22.4157 61.5866H1.97097C1.02906 61.5866 0.303639 62.4383 0.440367 63.3869C4.31814 89.9968 26.8213 110.416 54.0113 110.416C81.2013 110.416 103.701 89.9968 107.578 63.3869C107.715 62.4383 106.99 61.5866 106.048 61.5866H85.6032ZM54.0113 0C26.8251 0 4.32193 20.4192 0.440367 47.0291C0.303639 47.9777 1.02906 48.8294 1.97097 48.8294H22.4119C23.1183 48.8294 23.7374 48.3377 23.9045 47.637C27.2315 33.8422 39.4459 23.6094 54.0113 23.6094C68.5767 23.6094 80.7873 33.8461 84.1143 47.637C84.2814 48.3377 84.9005 48.8294 85.607 48.8294H106.048C106.99 48.8294 107.715 47.9777 107.578 47.0291C103.701 20.4192 81.1937 0 54.0113 0Z" fill="currentColor"/>
+                            </svg>
+                        </div>
+                        
+                        <!-- Error Title -->
+                        <h3 class="text-2xl md:text-3xl font-bold text-gray-700 dark:text-white mb-4 text-center">
+                            Unable to Load Pokémon
+                        </h3>
+                        
+                        <!-- Error Description -->
+                        <p class="text-gray-600 dark:text-gray-300 mb-6 text-center text-base md:text-lg leading-relaxed">
                             We're having trouble connecting to the Pokémon database. This might be due to:
                         </p>
-                        <ul class="text-gray-600 dark:text-gray-300 text-left max-w-md mx-auto mb-6">
-                            <li>• Network connectivity issues</li>
-                            <li>• Pokémon API service being temporarily unavailable</li>
-                            <li>• Rate limiting from too many requests</li>
-                        </ul>
-                        <button onclick="location.reload()" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">
-                            Try Again
+                        
+                        <!-- Error Reasons List -->
+                        <div class="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-6 mb-8 w-full max-w-md">
+                            <ul class="space-y-3 text-gray-600 dark:text-gray-300">
+                                <li class="flex items-start">
+                                    <span class="text-red-500 mr-3 mt-0.5">•</span>
+                                    <span class="text-sm md:text-base">Network connectivity issues</span>
+                                </li>
+                                <li class="flex items-start">
+                                    <span class="text-red-500 mr-3 mt-0.5">•</span>
+                                    <span class="text-sm md:text-base">Pokémon API service being temporarily unavailable</span>
+                                </li>
+                                <li class="flex items-start">
+                                    <span class="text-red-500 mr-3 mt-0.5">•</span>
+                                    <span class="text-sm md:text-base">Rate limiting from too many requests</span>
+                                </li>
+                            </ul>
+                        </div>
+                        
+                        <!-- Try Again Button -->
+                        <button 
+                            onclick="location.reload()" 
+                            class="bg-blue-500 hover:bg-blue-600 active:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-colors duration-200 shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95 transition-transform"
+                        >
+                            <span class="flex items-center">
+                                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                                </svg>
+                                Try Again
+                            </span>
                         </button>
                     </div>
                 `;
